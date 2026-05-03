@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -165,7 +166,16 @@ class CodingAgent:
         return "Error: Maximum iterations reached without completing the task."
 
     def _read_file(self, path: str) -> str:
-        filepath = self.workspace / path
+        if os.path.isabs(path):
+            filepath = Path(path)
+        else:
+            filepath = self.workspace / path
+
+        lower = path.lower()
+        if "desktop" in lower and not os.path.isabs(path):
+            desktop = Path.home() / "Desktop"
+            filepath = desktop / Path(path).name
+
         if not filepath.exists():
             return f"Error: File not found: {path}"
 
@@ -175,12 +185,24 @@ class CodingAgent:
             return f"Error reading file: {e}"
 
     def _write_file(self, path: str, content: str) -> str:
-        filepath = self.workspace / path
+        # Resolve path: if absolute, use as-is; if relative, use workspace
+        if os.path.isabs(path):
+            filepath = Path(path)
+        else:
+            filepath = self.workspace / path
+
+        # Handle common user paths like Desktop/Documents
+        lower = path.lower()
+        if "desktop" in lower and not os.path.isabs(path):
+            desktop = Path.home() / "Desktop"
+            desktop.mkdir(parents=True, exist_ok=True)
+            filepath = desktop / Path(path).name
+
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             filepath.write_text(content, encoding="utf-8")
-            return f"Successfully wrote {len(content)} bytes to {path}"
+            return f"Successfully wrote {len(content)} bytes to {filepath}"
         except Exception as e:
             return f"Error writing file: {e}"
 
