@@ -7,10 +7,12 @@ import sys
 import time
 from pathlib import Path
 
+from prompt_toolkit import prompt
+from prompt_toolkit.styles import Style
+
 from src.config import Config
 from src.core.agent import CodingAgent
 
-# Fix Windows console encoding
 if sys.platform == "win32":
     import codecs
 
@@ -32,6 +34,19 @@ BANNER = r"""
                   autonomous agent v{version}
 """.format(version=VERSION)
 
+FURY_STYLE = Style.from_dict(
+    {
+        "banner": "bold ansicyan",
+        "prompt": "bold ansigreen",
+        "error": "ansired",
+        "success": "ansigreen",
+        "info": "ansiblue",
+        "warning": "ansiyellow",
+        "menu-item": "bold ansicyan",
+        "menu-selected": "bold ansigreen",
+    }
+)
+
 GREEN = "\033[92m"
 CYAN = "\033[96m"
 YELLOW = "\033[93m"
@@ -40,79 +55,54 @@ MAGENTA = "\033[95m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
 RESET = "\033[0m"
-UNDERLINE = "\033[4m"
 
 
 def print_banner() -> None:
     print(f"{CYAN}{BANNER}{RESET}")
 
 
-def print_step(step: int, total: int, text: str) -> None:
-    print(f"{YELLOW}{BOLD}>> Step {step}/{total}: {text}{RESET}")
-
-
-def print_prompt(text: str) -> None:
-    print(f"{CYAN}{BOLD}[?]{RESET} {text}")
-
-
 def print_ok(text: str) -> None:
-    print(f"{GREEN}[+]{RESET} {text}")
+    print(f"  {GREEN}[+]{RESET} {text}")
 
 
 def print_error(text: str) -> None:
-    print(f"{RED}[-]{RESET} {text}")
+    print(f"  {RED}[-]{RESET} {text}")
 
 
 def print_info(text: str) -> None:
-    print(f"{DIM}{text}{RESET}")
+    print(f"  {DIM}{text}{RESET}")
 
 
 def print_fury(text: str) -> None:
-    print(f"{MAGENTA}{BOLD}Fury >>{RESET} {text}")
+    print(f"  {MAGENTA}{BOLD}Fury >>{RESET} {text}")
 
 
-def print_user(text: str) -> None:
-    print(f"{GREEN}{BOLD}You >>{RESET} {text}")
-
-
-def print_exec(text: str) -> None:
-    print(f"{DIM}Executing: {text}{RESET}")
-
-
-def print_success(text: str) -> None:
-    print(f"{GREEN}[+]{RESET} {text}")
-
-
-def input_styled(prompt_text: str, default: str = "") -> str:
-    if default:
-        full = f"{prompt_text} [{default}]: "
-    else:
-        full = f"{prompt_text}: "
-
+def input_fury(message: str, default: str = "") -> str:
     try:
-        result = input(f"{CYAN}{BOLD}[?]{RESET} {full}")
+        if default:
+            result = prompt(
+                f"\n{CYAN}{BOLD}  >> {message} [{default}]: {RESET}",
+                style=FURY_STYLE,
+                default=default,
+            )
+        else:
+            result = prompt(
+                f"\n{CYAN}{BOLD}  >> {message}: {RESET}",
+                style=FURY_STYLE,
+            )
+        return result.strip() or default
     except (EOFError, KeyboardInterrupt):
         print()
         sys.exit(0)
 
-    return result.strip() or default
-
-
-def progress_bar(label: str, duration: float, width: int = 20) -> None:
-    filled = int(width * min(duration / 3.0, 1.0))
-    bar = "\u2588" * filled + "\u2591" * (width - filled)
-    print(f"{DIM}{label} [{bar}] {duration:.1f}s{RESET}")
-
 
 class OnboardingWizard:
-    """Interactive setup wizard."""
-
     def __init__(self, config_path: Path) -> None:
         self.config_path = config_path
 
     def run(self) -> Config:
         print_banner()
-        print(f"{GREEN}Welcome to FuryAI. First time? Let's set things up.{RESET}")
+        print(f"{GREEN}  Welcome to FuryAI. Let's set things up.{RESET}")
         print()
 
         api_key = self._step_api_key()
@@ -140,44 +130,56 @@ class OnboardingWizard:
         )
 
     def _step_api_key(self) -> str:
-        print_step(1, 4, "API Key")
+        print(f"  {YELLOW}{BOLD}Step 1/4: API Key{RESET}")
         print()
-        print(f"  {GREEN}1{RESET}) Open browser to authenticate with OpenRouter (recommended)")
-        print(f"  {GREEN}2{RESET}) Enter API key manually")
+        print(f"  {CYAN}Authenticate with OpenRouter to get your API key{RESET}")
+        print()
+        print(f"  {GREEN}1{RESET}) Browser login (recommended) — press Enter to continue")
+        print(f"  {GREEN}2{RESET}) Manual API key entry")
         print()
 
-        choice = input_styled("Choice", "1")
+        choice = input_fury("Choose", "1")
 
         if choice == "1":
             try:
                 from src.auth import authenticate
-                key = authenticate()
+
+                api_key = authenticate()
                 print()
-                return key
+                print_ok("Authentication successful!")
+                print()
+                return api_key
             except Exception as e:
                 print_error(str(e))
                 print_info("Falling back to manual entry...")
-                print()
-                return self._step_api_key()
+                return self._manual_api_key()
         else:
-            print_info("Get your key at: https://openrouter.ai/keys")
-            print()
-            key = input_styled("OpenRouter API Key")
-            if not key:
-                print_error("API key is required")
-                return self._step_api_key()
-            print()
-            return key
+            return self._manual_api_key()
+
+    def _manual_api_key(self) -> str:
+        print()
+        print_info("Create a key at: https://openrouter.ai/keys")
+        print()
+
+        key = input_fury("OpenRouter API Key")
+        if not key:
+            print_error("API key is required")
+            return self._manual_api_key()
+
+        print()
+        print_ok("API key saved!")
+        print()
+        return key
 
     def _step_model(self) -> str:
-        print_step(2, 4, "Default Model")
+        print(f"  {YELLOW}{BOLD}Step 2/4: Default Model{RESET}")
         print()
-        print(f"  {GREEN}1{RESET}) OpenAI GPT-oss-20b (free)")
-        print(f"  {GREEN}2{RESET}) Nvidia Nemotron 120b (free)")
+        print(f"  {GREEN}1{RESET}) openai/gpt-oss-20b:free (recommended)")
+        print(f"  {GREEN}2{RESET}) nvidia/nemotron-3-super-120b-a12b:free")
         print(f"  {GREEN}3{RESET}) Custom model ID")
         print()
 
-        choice = input_styled("Choice", "1")
+        choice = input_fury("Choose", "1")
 
         models = {
             "1": "openai/gpt-oss-20b:free",
@@ -189,17 +191,21 @@ class OnboardingWizard:
             model = choice
 
         print()
+        print_ok(f"Model set to: {model}")
+        print()
         return model
 
     def _step_fury_level(self) -> str:
-        print_step(3, 4, "Fury Level")
+        print(f"  {YELLOW}{BOLD}Step 3/4: Fury Level{RESET}")
         print()
-        print(f"  {GREEN}1{RESET} - Ask before every action (safe)")
-        print(f"  {GREEN}5{RESET} - Plan then execute (recommended)")
+        print("  How autonomous should FuryAI be?")
+        print()
+        print(f"  {GREEN}1{RESET}  - Ask before every action (safe)")
+        print(f"  {GREEN}5{RESET}  - Plan then execute (recommended)")
         print(f"  {GREEN}10{RESET} - Full autonomy (for experts)")
         print()
 
-        level = input_styled("Level", "5")
+        level = input_fury("Level", "5")
 
         try:
             level_int = int(level)
@@ -210,22 +216,26 @@ class OnboardingWizard:
             return self._step_fury_level()
 
         print()
+        print_ok(f"Fury level set to {level_int}/10")
+        print()
         return level
 
     def _step_workspace(self) -> str:
-        print_step(4, 4, "Workspace")
+        print(f"  {YELLOW}{BOLD}Step 4/4: Workspace{RESET}")
+        print()
         print_info("Where should FuryAI work?")
         print()
 
-        workspace = input_styled("Path", "./fury-workspace")
+        workspace = input_fury("Path", "./fury-workspace")
+        print()
+        print_ok(f"Workspace set to: {workspace}")
         print()
         return workspace
 
     def _save_config(
         self, api_key: str, model: str, level: str, workspace: str
     ) -> None:
-        env_path = self.config_path
-        env_path.write_text(
+        self.config_path.write_text(
             f"OPENROUTER_API_KEY={api_key}\n"
             f"FURY_MODEL={model}\n"
             f"FURY_LEVEL={level}\n"
@@ -234,8 +244,6 @@ class OnboardingWizard:
 
 
 class ChatInterface:
-    """Interactive chat with styled output."""
-
     def __init__(self, agent: CodingAgent, max_iterations: int = 5) -> None:
         self.agent = agent
         self.max_iterations = max_iterations
@@ -248,16 +256,19 @@ class ChatInterface:
         model_display = self.agent.llm.model.split("/")[-1]
         ws = self.agent.workspace.name
 
-        print(f"{CYAN}{BOLD}[=] FuryAI v{VERSION} | model: {model_display} | level: {self.max_iterations}/10 [=]{RESET}")
-        print(f"{CYAN}{BOLD}[=] workspace: {ws} | skills: {len(self.skills)} [=]{RESET}")
-        print(f"{CYAN}{BOLD}[=] Type /help for commands, /exit to quit [=]{RESET}")
+        print(f"{CYAN}{BOLD}  [=] FuryAI v{VERSION} | model: {model_display} | level: {self.max_iterations}/10 [=]{RESET}")
+        print(f"{CYAN}{BOLD}  [=] workspace: {ws} | skills: {len(self.skills)} [=]{RESET}")
+        print(f"{CYAN}{BOLD}  [=] Type /help for commands, /exit to quit [=]{RESET}")
         print()
 
         self._load_skills()
 
         while True:
             try:
-                user_input = input(f"{GREEN}{BOLD}You >>{RESET} ")
+                user_input = prompt(
+                    f"\n{GREEN}{BOLD}  You >> {RESET}",
+                    style=FURY_STYLE,
+                )
             except (EOFError, KeyboardInterrupt):
                 print()
                 self._save_skills()
@@ -304,13 +315,13 @@ class ChatInterface:
 
     def _show_help(self) -> None:
         print()
-        print(f"{BOLD}Available commands:{RESET}")
-        print(f"  {GREEN}/help{RESET}     - Show this help")
-        print(f"  {GREEN}/memory{RESET}    - Show agent memory")
-        print(f"  {GREEN}/skills{RESET}    - Show learned skills")
-        print(f"  {GREEN}/status{RESET}    - Show agent status")
-        print(f"  {GREEN}/clear{RESET}     - Clear screen")
-        print(f"  {GREEN}/exit{RESET}      - Quit FuryAI")
+        print(f"  {BOLD}Available commands:{RESET}")
+        print(f"    {GREEN}/help{RESET}     - Show this help")
+        print(f"    {GREEN}/memory{RESET}    - Show agent memory")
+        print(f"    {GREEN}/skills{RESET}    - Show learned skills")
+        print(f"    {GREEN}/status{RESET}    - Show agent status")
+        print(f"    {GREEN}/clear{RESET}     - Clear screen")
+        print(f"    {GREEN}/exit{RESET}      - Quit FuryAI")
         print()
 
     def _show_memory(self) -> None:
@@ -325,27 +336,27 @@ class ChatInterface:
         top = "+" + "-" * 55 + "+"
         bottom = "+" + "-" * 55 + "+"
 
-        print(f"{CYAN}{top}{RESET}")
-        print(f"{CYAN}|{RESET}{BOLD} FuryAI Memory {RESET}{' ' * 39}{CYAN}|{RESET}")
-        print(f"{CYAN}{border}{RESET}")
+        print(f"  {CYAN}{top}{RESET}")
+        print(f"  {CYAN}|{RESET}{BOLD} FuryAI Memory {RESET}{' ' * 39}{CYAN}|{RESET}")
+        print(f"  {CYAN}{border}{RESET}")
 
         lines = user.strip().split("\n")[:5]
         for line in lines:
             cleaned = line.replace("#", "").replace("*", "").strip()
             if cleaned:
-                print(f"{CYAN}|{RESET} User: {cleaned[:48]}")
+                print(f"  {CYAN}|{RESET} User: {cleaned[:48]}")
 
-        print(f"{CYAN}{border}{RESET}")
+        print(f"  {CYAN}{border}{RESET}")
 
         lines = memory.strip().split("\n")[:5]
         for line in lines:
             cleaned = line.replace("#", "").replace("*", "").strip()
             if cleaned:
-                print(f"{CYAN}|{RESET} {cleaned[:48]}")
+                print(f"  {CYAN}|{RESET} {cleaned[:48]}")
 
-        print(f"{CYAN}{border}{RESET}")
-        print(f"{CYAN}|{RESET} Tokens used this session: {self.session_tokens}")
-        print(f"{CYAN}{bottom}{RESET}")
+        print(f"  {CYAN}{border}{RESET}")
+        print(f"  {CYAN}|{RESET} Tokens used this session: {self.session_tokens}")
+        print(f"  {CYAN}{bottom}{RESET}")
         print()
 
     def _show_skills(self) -> None:
@@ -354,9 +365,9 @@ class ChatInterface:
             return
 
         print()
-        print(f"{BOLD}Learned skills:{RESET}")
+        print(f"  {BOLD}Learned skills:{RESET}")
         for skill in self.skills:
-            print(f"  {GREEN}>{RESET} {skill}")
+            print(f"    {GREEN}>{RESET} {skill}")
         print()
 
     def _show_status(self) -> None:
@@ -365,13 +376,13 @@ class ChatInterface:
         ws_files = [f.name for f in files if f.name not in ("sandbox", "MEMORY.md", "USER.md")]
 
         print()
-        print(f"{BOLD}Agent Status:{RESET}")
-        print(f"  Model:     {self.agent.llm.model}")
-        print(f"  Workspace: {ws}")
-        print(f"  Files:     {len(ws_files)}")
+        print(f"  {BOLD}Agent Status:{RESET}")
+        print(f"    Model:     {self.agent.llm.model}")
+        print(f"    Workspace: {ws}")
+        print(f"    Files:     {len(ws_files)}")
         for f in ws_files:
-            print(f"    {GREEN}>{RESET} {f}")
-        print(f"  Skills:    {len(self.skills)}")
+            print(f"      {GREEN}>{RESET} {f}")
+        print(f"    Skills:    {len(self.skills)}")
         print()
 
     def _process_task(self, task: str) -> None:
@@ -383,7 +394,9 @@ class ChatInterface:
             result = self.agent.run(task, max_iterations=self.max_iterations)
             duration = time.time() - start
 
-            progress_bar("Processing", duration)
+            filled = int(20 * min(duration / 3.0, 1.0))
+            bar = "\u2588" * filled + "\u2591" * (20 - filled)
+            print(f"  {DIM}Processing [{bar}] {duration:.1f}s{RESET}")
             print()
 
             print_fury(result)
@@ -413,13 +426,11 @@ class ChatInterface:
 
 
 def run_onboarding() -> Config:
-    """Run the setup wizard."""
     wizard = OnboardingWizard(Path(".env"))
     return wizard.run()
 
 
 def run_interactive(config: Config) -> None:
-    """Start interactive chat session."""
     agent = CodingAgent(
         api_key=config.api_key,
         workspace=config.workspace,
@@ -430,7 +441,6 @@ def run_interactive(config: Config) -> None:
 
 
 def run_task(config: Config, task: str) -> None:
-    """Run a single task."""
     agent = CodingAgent(
         api_key=config.api_key,
         workspace=config.workspace,
@@ -445,22 +455,23 @@ def run_task(config: Config, task: str) -> None:
     result = agent.run(task, max_iterations=config.max_iterations)
     duration = time.time() - start
 
-    progress_bar("Processing", duration)
+    filled = int(20 * min(duration / 3.0, 1.0))
+    bar = "\u2588" * filled + "\u2591" * (20 - filled)
+    print(f"  {DIM}Processing [{bar}] {duration:.1f}s{RESET}")
     print()
     print_fury(result)
 
 
 def show_status(config: Config) -> None:
-    """Show agent status."""
     ws = config.workspace
-    print(f"{BOLD}FuryAI Status:{RESET}")
-    print(f"  Model:     {config.model}")
-    print(f"  Workspace: {ws}")
-    print(f"  Level:     {config.max_iterations}/10")
+    print(f"  {BOLD}FuryAI Status:{RESET}")
+    print(f"    Model:     {config.model}")
+    print(f"    Workspace: {ws}")
+    print(f"    Level:     {config.max_iterations}/10")
 
     if ws.exists():
         files = list(ws.glob("*"))
-        print(f"  Files:     {len(files)}")
+        print(f"    Files:     {len(files)}")
     else:
         print_info("  Workspace not yet created")
 
@@ -468,10 +479,9 @@ def show_status(config: Config) -> None:
 
 
 def list_models(config: Config) -> None:
-    """List available OpenRouter models."""
     import requests
 
-    print(f"{BOLD}Available free models on OpenRouter:{RESET}")
+    print(f"  {BOLD}Available free models on OpenRouter:{RESET}")
     print()
 
     try:
@@ -483,7 +493,7 @@ def list_models(config: Config) -> None:
         models = [m for m in resp.json()["data"] if ":free" in m["id"]]
         for m in sorted(models, key=lambda x: x["id"])[:30]:
             ctx = m.get("context_length", "?")
-            print(f"  {GREEN}>{RESET} {m['id']} (ctx: {ctx})")
+            print(f"    {GREEN}>{RESET} {m['id']} (ctx: {ctx})")
     except Exception as e:
         print_error(f"Failed to fetch models: {e}")
 
@@ -491,7 +501,6 @@ def list_models(config: Config) -> None:
 
 
 def cli() -> None:
-    """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         description=f"FuryAI v{VERSION} - Autonomous Coding Agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -539,7 +548,6 @@ Examples:
         run_onboarding()
         return
 
-    # Try loading config from .env
     env_path = Path(".env")
     if env_path.exists():
         from dotenv import load_dotenv
@@ -577,11 +585,11 @@ Examples:
         run_interactive(config)
 
     elif args.command == "config":
-        print(f"{BOLD}Current configuration:{RESET}")
-        print(f"  Model:     {config.model}")
-        print(f"  Workspace: {config.workspace}")
-        print(f"  Level:     {config.max_iterations}/10")
-        print(f"  API Key:   {config.api_key[:8]}...{config.api_key[-4:]}")
+        print(f"  {BOLD}Current configuration:{RESET}")
+        print(f"    Model:     {config.model}")
+        print(f"    Workspace: {config.workspace}")
+        print(f"    Level:     {config.max_iterations}/10")
+        print(f"    API Key:   {config.api_key[:8]}...{config.api_key[-4:]}")
         print()
 
     elif args.command == "status":
@@ -591,7 +599,7 @@ Examples:
         list_models(config)
 
     elif args.command == "feedback":
-        print(f"{BOLD}Feedback:{RESET}")
-        print("  GitHub: https://github.com/your-username/fury-agent")
-        print("  Issues: https://github.com/your-username/fury-agent/issues")
+        print(f"  {BOLD}Feedback:{RESET}")
+        print("    GitHub: https://github.com/anoshinilya21-debug/AGENT-FuryAI-")
+        print("    Issues: https://github.com/anoshinilya21-debug/AGENT-FuryAI-/issues")
         print()
