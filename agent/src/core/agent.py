@@ -103,7 +103,7 @@ class CodingAgent:
             handler=self._run_command,
         )
 
-    def run(self, task: str, max_iterations: int = 10) -> str:
+    def run(self, task: str, max_iterations: int = 30) -> str:
         memory_context = self.memory.get_context()
 
         self.conversation = [
@@ -113,6 +113,9 @@ class CodingAgent:
 
         last_tool_calls: list[str] = []
         loop_count = 0
+        self.created_files: list[str] = []
+        self.modified_files: list[str] = []
+        self.deleted_files: list[str] = []
 
         for iteration in range(max_iterations):
             response = self.llm.chat(
@@ -152,6 +155,20 @@ class CodingAgent:
                     else:
                         result = self.tools.execute(func_name, func_args)
 
+                    # Track file operations
+                    if func_name == "write_file":
+                        try:
+                            rdata = json.loads(result)
+                            if isinstance(rdata, dict) and rdata.get("status") == "ok":
+                                act = rdata.get("action", "created")
+                                fp = rdata.get("path", "")
+                                if act == "created":
+                                    self.created_files.append(fp)
+                                elif act == "modified":
+                                    self.modified_files.append(fp)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
                     # Notify about the result
                     if self.on_result:
                         try:
@@ -182,7 +199,28 @@ class CodingAgent:
             # If we got tool_calls but no text, and this is near the end,
             # consider the task done if tools executed successfully
             if iteration >= max_iterations - 2 and not response["content"]:
-                return "Task completed (tool execution finished)."
+                return self._build_summary()
+
+        return self._build_summary()
+
+    def _build_summary(self) -> str:
+        """Build a summary of all file operations."""
+        lines = ["=== Summary ==="]
+        if self.created_files:
+            lines.append(f"  Created ({len(self.created_files)}):")
+            for f in self.created_files:
+                lines.append(f"    [+] {f}")
+        if self.modified_files:
+            lines.append(f"  Modified ({len(self.modified_files)}):")
+            for f in self.modified_files:
+                lines.append(f"    [~] {f}")
+        if self.deleted_files:
+            lines.append(f"  Deleted ({len(self.deleted_files)}):")
+            for f in self.deleted_files:
+                lines.append(f"    [-] {f}")
+        if not self.created_files and not self.modified_files and not self.deleted_files:
+            lines.append("  No file changes made.")
+        return "\n".join(lines)
 
         return "Error: Maximum iterations reached without completing the task."
 

@@ -129,7 +129,7 @@ class OnboardingWizard:
             api_key=api_key,
             workspace=Path(workspace),
             model=model,
-            max_iterations=int(level),
+            fury_level=int(level),
         )
 
     def _step_api_key(self) -> str:
@@ -221,7 +221,7 @@ class OnboardingWizard:
         print()
         print_ok(f"Fury level set to {level_int}/10")
         print()
-        return level
+        return str(level_int)
 
     def _step_workspace(self) -> str:
         _print("  Step 4/4: Workspace", "warning")
@@ -390,7 +390,7 @@ class ChatInterface:
         model_display = self.agent.llm.model.split("/")[-1]
         ws = self.agent.workspace.name
 
-        _print(f"  [=] FuryAI v{VERSION} | model: {model_display} | level: {self.max_iterations}/10 [=]", "cyan")
+        _print(f"  [=] FuryAI v{VERSION} | model: {model_display} | level: {self.fury_level}/10 [=]", "cyan")
         _print(f"  [=] workspace: {ws} | skills: {len(self.skills)} [=]", "cyan")
         _print("  [=] Type /help for commands, /exit to quit [=]", "cyan")
         print()
@@ -521,7 +521,7 @@ class ChatInterface:
 
     def _process_task(self, task: str) -> None:
         print()
-        print_fury("Analyzing task...")
+        _print("  Fury >> Analyzing task...", "cyan")
         start = time.time()
 
         try:
@@ -533,7 +533,12 @@ class ChatInterface:
             _print(f"  Processing [{bar}] {duration:.1f}s", "info")
             print()
 
-            print_fury(result)
+            # Show file summary first
+            self._show_file_summary()
+
+            # Show AI response
+            if result and result not in ("Task completed. No further progress detected."):
+                print_fury(result)
             print()
 
             if len(task) > 30:
@@ -545,6 +550,29 @@ class ChatInterface:
         except Exception as e:
             print_error(f"Error: {e}")
             print()
+
+    def _show_file_summary(self) -> None:
+        """Show summary of all created/modified files."""
+        created = getattr(self.agent, "created_files", [])
+        modified = getattr(self.agent, "modified_files", [])
+        deleted = getattr(self.agent, "deleted_files", [])
+
+        if not created and not modified and not deleted:
+            return
+
+        print()
+        _print("  " + "-" * 40, "info")
+        _print("  File Changes:", "cyan")
+
+        for f in created:
+            _print(f"    [+] {f}", "success")
+        for f in modified:
+            _print(f"    [~] {f}", "warning")
+        for f in deleted:
+            _print(f"    [-] {f}", "error")
+
+        _print("  " + "-" * 40, "info")
+        print()
 
     def _load_skills(self) -> None:
         skills_file = self.agent.workspace / "SKILLS.json"
@@ -573,7 +601,7 @@ def run_interactive(config: Config) -> None:
     chat = ChatInterface(
         agent,
         max_iterations=config.max_iterations,
-        fury_level=config.max_iterations,
+        fury_level=config.fury_level,
     )
     chat.run()
 
@@ -705,7 +733,7 @@ Examples:
                 api_key=api_key,
                 workspace=Path(args.workspace or workspace),
                 model=args.model or model,
-                max_iterations=level,
+                fury_level=level,
             )
     else:
         print_info("No configuration found. Running setup...")
@@ -726,7 +754,7 @@ Examples:
         _print("  Current configuration:", "bold")
         _print(f"    Model:     {config.model}")
         _print(f"    Workspace: {config.workspace}")
-        _print(f"    Level:     {config.max_iterations}/10")
+        _print(f"    Level:     {config.fury_level}/10")
         _print(f"    API Key:   {config.api_key[:8]}...{config.api_key[-4:]}")
         print()
 
