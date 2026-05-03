@@ -141,16 +141,33 @@ class OnboardingWizard:
 
     def _step_api_key(self) -> str:
         print_step(1, 4, "API Key")
-        print_info("Get your key at: https://openrouter.ai/keys")
+        print()
+        print(f"  {GREEN}1{RESET}) Open browser to authenticate with OpenRouter (recommended)")
+        print(f"  {GREEN}2{RESET}) Enter API key manually")
         print()
 
-        key = input_styled("OpenRouter API Key")
-        if not key:
-            print_error("API key is required")
-            return self._step_api_key()
+        choice = input_styled("Choice", "1")
 
-        print()
-        return key
+        if choice == "1":
+            try:
+                from src.auth import authenticate
+                key = authenticate()
+                print()
+                return key
+            except Exception as e:
+                print_error(str(e))
+                print_info("Falling back to manual entry...")
+                print()
+                return self._step_api_key()
+        else:
+            print_info("Get your key at: https://openrouter.ai/keys")
+            print()
+            key = input_styled("OpenRouter API Key")
+            if not key:
+                print_error("API key is required")
+                return self._step_api_key()
+            print()
+            return key
 
     def _step_model(self) -> str:
         print_step(2, 4, "Default Model")
