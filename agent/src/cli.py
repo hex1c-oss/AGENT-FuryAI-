@@ -518,7 +518,7 @@ Examples:
 
     args = parser.parse_args()
 
-    if args.command == "setup" or args.command is None:
+    if args.command == "setup":
         run_onboarding()
         return
 
@@ -534,18 +534,18 @@ Examples:
         workspace = os.environ.get("FURY_WORKSPACE", "./fury-workspace")
 
         if not api_key:
-            print_error("OPENROUTER_API_KEY not found in .env")
-            print_info("Run 'fury setup' to configure")
-            sys.exit(1)
-
-        config = Config(
-            api_key=api_key,
-            workspace=Path(args.workspace or workspace),
-            model=args.model or model,
-            max_iterations=level,
-        )
+            print_info("API key not configured. Running setup...")
+            print()
+            config = run_onboarding()
+        else:
+            config = Config(
+                api_key=api_key,
+                workspace=Path(args.workspace or workspace),
+                model=args.model or model,
+                max_iterations=level,
+            )
     else:
-        print_info("No .env found. Running setup...")
+        print_info("No configuration found. Running setup...")
         print()
         config = run_onboarding()
 
