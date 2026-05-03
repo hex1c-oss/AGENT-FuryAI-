@@ -146,9 +146,7 @@ class CodingAgent:
                 current_calls = []
                 for tool_call in response["tool_calls"]:
                     func_name = tool_call["function"]["name"]
-                    func_args: Dict[str, Any] = json.loads(
-                        tool_call["function"]["arguments"]
-                    )
+                    func_args = self._parse_tool_arguments(tool_call["function"].get("arguments", ""))
 
                     call_sig = f"{func_name}:{json.dumps(func_args, sort_keys=True)}"
                     current_calls.append(call_sig)
@@ -207,6 +205,42 @@ class CodingAgent:
             "## Lessons Learned",
         )
         return "Error: Maximum iterations reached without completing the task."
+
+    def _parse_tool_arguments(self, raw_args: Any) -> Dict[str, Any]:
+        """Parse tool-call arguments robustly.
+
+        Some models occasionally return non-strict JSON (extra trailing text, multiple JSON
+        objects, etc.). We try strict parse first, then fall back to extracting the first
+        valid JSON object.
+        """
+        if raw_args is None:
+            return {}
+        if isinstance(raw_args, dict):
+            return raw_args
+        if not isinstance(raw_args, str):
+            return {}
+
+        s = raw_args.strip()
+        if not s:
+            return {}
+
+        try:
+            parsed = json.loads(s)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            pass
+
+        # Fallback: extract first JSON object using JSONDecoder raw_decode
+        decoder = json.JSONDecoder()
+        start = s.find("{")
+        if start == -1:
+            return {}
+
+        try:
+            obj, _end = decoder.raw_decode(s[start:])
+            return obj if isinstance(obj, dict) else {}
+        except Exception:
+            return {}
 
     def _read_file(self, path: str) -> str:
         filepath = self._resolve_user_path(path)

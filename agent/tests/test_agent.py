@@ -1,6 +1,6 @@
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import tempfile
 
 from src.core.agent import CodingAgent
 
@@ -48,6 +48,13 @@ def test_run_command_tool() -> None:
         agent = CodingAgent(api_key="fake-key", workspace=Path(tmp))
         result = agent._run_command("echo test")
         assert "test" in result
+
+
+def test_parse_tool_arguments_tolerates_extra_data() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = CodingAgent(api_key="fake-key", workspace=Path(tmp))
+    args = agent._parse_tool_arguments('{"path": "x.txt"} trailing junk')
+    assert args == {"path": "x.txt"}
 
 
 @patch("src.core.agent.OpenRouterProvider")
