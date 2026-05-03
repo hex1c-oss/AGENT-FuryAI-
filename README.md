@@ -41,7 +41,7 @@
 
 FuryAI is an autonomous coding agent that thinks, acts, and learns. Built on the **ReAct** reasoning loop with a **Tool Registry** pattern, **persistent file-based memory**, and a **sandboxed execution environment**. It speaks OpenRouter — giving you access to **200+ models** from every major provider, with **free tier support** out of the box.
 
-No vendor lock-in. No heavy frameworks. Just pure Python.
+No vendor lock-in. No heavy frameworks. Just pure Python, clean architecture, and a terminal interface that looks like it crawled out of a 1995 hacker movie.
 
 **Use any model** — OpenRouter (200+), OpenAI, Anthropic, Google, Nvidia, Qwen, Meta Llama, MiniMax, or any custom endpoint. Switch with a flag. No code changes.
 
@@ -73,6 +73,28 @@ python -m src.main setup
 
 # 4. Start chat (type /help INSIDE the chat, not in PowerShell)
 python -m src.main chat
+```
+
+### Change model
+
+**Temporary (one run):**
+
+```bash
+python -m src.main -m qwen/qwen3-coder:free
+```
+
+This starts **chat** with the chosen model (if you omit a command, FuryAI defaults to `chat`).
+
+You can also be explicit:
+
+```bash
+python -m src.main chat -m qwen/qwen3-coder:free
+```
+
+**Permanent:** edit `agent/.env` and set `FURY_MODEL=...`, or rerun:
+
+```bash
+python -m src.main setup
 ```
 
 The first run launches a **4-step onboarding wizard**:

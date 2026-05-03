@@ -729,7 +729,7 @@ Examples:
         help="Override model",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_intermixed_args()
 
     if args.command == "setup":
         run_onboarding()
@@ -761,17 +761,19 @@ Examples:
         print()
         config = run_onboarding()
 
-    if args.command == "run":
+    command = args.command or "chat"
+
+    if command == "run":
         if not args.task:
             print_error("Task is required for 'run' command")
             print_info("Usage: fury run \"your task here\"")
             sys.exit(1)
         run_task(config, args.task)
 
-    elif args.command == "chat":
+    elif command == "chat":
         run_interactive(config)
 
-    elif args.command == "config":
+    elif command == "config":
         _print("  Current configuration:", "bold")
         _print(f"    Model:     {config.model}")
         _print(f"    Workspace: {config.workspace}")
@@ -779,13 +781,13 @@ Examples:
         _print(f"    API Key:   {config.api_key[:8]}...{config.api_key[-4:]}")
         print()
 
-    elif args.command == "status":
+    elif command == "status":
         show_status(config)
 
-    elif args.command == "models":
+    elif command == "models":
         list_models(config)
 
-    elif args.command == "feedback":
+    elif command == "feedback":
         _print("  Feedback:", "bold")
         print_info("    GitHub: https://github.com/anoshinilya21-debug/AGENT-FuryAI-")
         print_info("    Issues: https://github.com/anoshinilya21-debug/AGENT-FuryAI-/issues")

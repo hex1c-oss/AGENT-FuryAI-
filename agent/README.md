@@ -74,6 +74,28 @@ python -m src.main setup
 python -m src.main chat
 ```
 
+### Change model
+
+**Temporary (one run):**
+
+```bash
+python -m src.main -m qwen/qwen3-coder:free
+```
+
+This starts **chat** with the chosen model (if you omit a command, FuryAI defaults to `chat`).
+
+You can also be explicit:
+
+```bash
+python -m src.main chat -m qwen/qwen3-coder:free
+```
+
+**Permanent:** edit `agent/.env` and set `FURY_MODEL=...`, or rerun:
+
+```bash
+python -m src.main setup
+```
+
 The first run launches a **4-step onboarding wizard**:
 
 ```
