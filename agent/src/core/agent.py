@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from ..llm.openrouter import Message, OpenRouterProvider
 from ..core.memory import MemoryManager
@@ -41,8 +41,10 @@ class CodingAgent:
         self,
         api_key: str,
         workspace: Path = Path("./workspace"),
-        model: str = "anthropic/claude-sonnet-4-20250514",
+        model: str = "openai/gpt-oss-20b:free",
         max_tokens: int = 4096,
+        on_action: Optional[Callable[[str, Dict[str, Any]], bool]] = None,
+        on_result: Optional[Callable[[str, Dict[str, Any], str], None]] = None,
     ) -> None:
         self.workspace = workspace
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -54,6 +56,8 @@ class CodingAgent:
         self.sandbox = Sandbox(self.workspace / "sandbox")
         self.tools = ToolRegistry()
         self.conversation: List[Message] = []
+        self.on_action = on_action
+        self.on_result = on_result
 
         self._register_default_tools()
 
@@ -138,7 +142,24 @@ class CodingAgent:
                     call_sig = f"{func_name}:{json.dumps(func_args, sort_keys=True)}"
                     current_calls.append(call_sig)
 
-                    result = self.tools.execute(func_name, func_args)
+                    # Check approval before executing
+                    if self.on_action:
+                        approved = self.on_action(func_name, func_args)
+                        if not approved:
+                            result = "Action cancelled by user."
+                        else:
+                            result = self.tools.execute(func_name, func_args)
+                    else:
+                        result = self.tools.execute(func_name, func_args)
+
+                    # Notify about the result
+                    if self.on_result:
+                        try:
+                            result_data = json.loads(result)
+                            if isinstance(result_data, dict):
+                                self.on_result(func_name, func_args, result)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
 
                     self.conversation.append(
                         Message(
@@ -200,11 +221,25 @@ class CodingAgent:
 
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
+        action = "created"
+        old_content = ""
+        if filepath.exists():
+            action = "modified"
+            old_content = filepath.read_text(encoding="utf-8")
+
         try:
             filepath.write_text(content, encoding="utf-8")
-            return f"Successfully wrote {len(content)} bytes to {filepath}"
+            lines_added = len(content.split("\n"))
+            return json.dumps({
+                "status": "ok",
+                "action": action,
+                "path": str(filepath),
+                "lines_added": lines_added,
+                "old_content": old_content,
+                "new_content": content,
+            })
         except Exception as e:
-            return f"Error writing file: {e}"
+            return json.dumps({"status": "error", "message": str(e)})
 
     def _run_command(self, command: str) -> str:
         return self.sandbox.execute(command)

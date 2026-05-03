@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any, Dict
 
 from prompt_toolkit import prompt
 from prompt_toolkit.formatted_text import FormattedText
@@ -246,11 +247,142 @@ class OnboardingWizard:
 
 
 class ChatInterface:
-    def __init__(self, agent: CodingAgent, max_iterations: int = 5) -> None:
+    def __init__(self, agent: CodingAgent, max_iterations: int = 5, fury_level: int = 5) -> None:
         self.agent = agent
         self.max_iterations = max_iterations
+        self.fury_level = fury_level
         self.session_tokens = 0
         self.skills: list[str] = []
+
+        # Set up action approval callback
+        self.agent.on_action = self._approve_action
+        self.agent.on_result = self._show_result
+
+    def _approve_action(self, tool_name: str, args: Dict[str, Any]) -> bool:
+        """Show what the agent wants to do and ask for confirmation."""
+        # Fury level >= 8: no questions
+        if self.fury_level >= 8:
+            self._show_action_preview(tool_name, args)
+            return True
+
+        # Fury level 5-7: ask for write/delete, skip for read
+        if 5 <= self.fury_level <= 7:
+            if tool_name == "read_file":
+                return True
+            return self._confirm_action(tool_name, args)
+
+        # Fury level 1-4: ask for everything
+        return self._confirm_action(tool_name, args)
+
+    def _show_action_preview(self, tool_name: str, args: Dict[str, Any]) -> None:
+        """Show what the agent is doing (without confirmation)."""
+        if tool_name == "write_file":
+            path = args.get("path", "?")
+            content = args.get("content", "")
+            lines = content.split("\n")
+            _print(f"  Creating {path}:", "info")
+            for line in lines[:10]:
+                _print(f"    + {line}", "success")
+            if len(lines) > 10:
+                _print(f"    ... ({len(lines)} lines total)", "info")
+        elif tool_name == "run_command":
+            _print(f"  Running: {args.get('command', '?')}", "info")
+        print()
+
+    def _confirm_action(self, tool_name: str, args: Dict[str, Any]) -> bool:
+        """Show diff and ask for confirmation."""
+        if tool_name == "write_file":
+            path = args.get("path", "?")
+            content = args.get("content", "")
+            lines = content.split("\n")
+
+            _print(f"  Want to create {path}:", "warning")
+            for line in lines[:15]:
+                _print(f"    + {line}", "success")
+            if len(lines) > 15:
+                _print(f"    ... ({len(lines)} lines total)", "info")
+
+        elif tool_name == "run_command":
+            cmd = args.get("command", "?")
+            _print(f"  Want to run: {cmd}", "warning")
+
+        elif tool_name == "read_file":
+            return True
+
+        print()
+        result = prompt("  Allow? [y/N]: ", style=FURY_STYLE)
+        allowed = result.strip().lower() in ("y", "yes")
+
+        if allowed:
+            _print("  Approved.", "success")
+        else:
+            _print("  Denied.", "error")
+        print()
+        return allowed
+
+    def _show_result(self, tool_name: str, args: Dict[str, Any], result: str) -> None:
+        """Show the result of an action with colored diff."""
+        try:
+            data = json.loads(result)
+        except (json.JSONDecodeError, TypeError):
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        if tool_name == "write_file" and data.get("status") == "ok":
+            path = data.get("path", "?")
+            action = data.get("action", "created")
+            new_content = data.get("new_content", "")
+            old_content = data.get("old_content", "")
+
+            if action == "created":
+                _print(f"  [+] Created {path}", "success")
+                new_lines = new_content.split("\n")
+                for line in new_lines[:20]:
+                    _print(f"    + {line}", "success")
+                if len(new_lines) > 20:
+                    _print(f"    ... ({len(new_lines)} lines total)", "info")
+            elif action == "modified":
+                _print(f"  [~] Modified {path}", "warning")
+                # Show simple diff: removed lines in red, added in green
+                old_lines = old_content.split("\n") if old_content else []
+                new_lines = new_content.split("\n")
+
+                # Simple line-by-line diff
+                max_lines = max(len(old_lines), len(new_lines))
+                shown = 0
+                for i in range(max_lines):
+                    old_line = old_lines[i] if i < len(old_lines) else None
+                    new_line = new_lines[i] if i < len(new_lines) else None
+
+                    if old_line is None and new_line is not None:
+                        _print(f"    + {new_line}", "success")
+                        shown += 1
+                    elif old_line is not None and new_line is None:
+                        _print(f"    - {old_line}", "error")
+                        shown += 1
+                    elif old_line != new_line:
+                        _print(f"    - {old_line}", "error")
+                        _print(f"    + {new_line}", "success")
+                        shown += 1
+
+                    if shown >= 30:
+                        _print(f"    ... ({max_lines} lines total)", "info")
+                        break
+
+            print()
+
+        elif tool_name == "run_command":
+            output = result.strip() if not data.get("status") else data.get("message", "")
+            if data.get("status") == "ok":
+                _print("  [+] Command executed", "success")
+            else:
+                _print("  [-] Command failed", "error")
+                if output:
+                    for line in output.split("\n")[:5]:
+                        _print(f"    {line}", "error")
+            print()
 
     def run(self) -> None:
         print_banner()
@@ -438,7 +570,11 @@ def run_interactive(config: Config) -> None:
         workspace=config.workspace,
         model=config.model,
     )
-    chat = ChatInterface(agent, max_iterations=config.max_iterations)
+    chat = ChatInterface(
+        agent,
+        max_iterations=config.max_iterations,
+        fury_level=config.max_iterations,
+    )
     chat.run()
 
 
