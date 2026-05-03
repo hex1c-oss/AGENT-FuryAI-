@@ -67,8 +67,11 @@ cd AGENT-FuryAI-/agent
 # 2. Install
 pip install -e .
 
-# 3. Run (interactive setup wizard launches automatically)
-python -m src.main
+# 3. Run setup (wizard creates .env on first run)
+python -m src.main setup
+
+# 4. Start chat (type /help INSIDE the chat, not in PowerShell)
+python -m src.main chat
 ```
 
 The first run launches a **4-step onboarding wizard**:
@@ -101,6 +104,8 @@ Path [./fury-workspace]:
 ```
 
 After setup, you're in. Every subsequent run reads your `.env` and skips the wizard.
+
+> Note: Slash commands like `/help` work only inside `python -m src.main chat`.
 
 ## Getting Started
 
@@ -135,6 +140,8 @@ Inside `python -m src.main chat`:
 |---|---|
 | `/help` | Show available commands |
 | `/memory` | Show agent memory in a styled box |
+| `/remember` | Save a user preference/fact |
+| `/note` | Save a memory note/lesson |
 | `/skills` | Show learned skills from past sessions |
 | `/status` | Show model, workspace, and file listing |
 | `/clear` | Clear the terminal screen |
@@ -170,6 +177,12 @@ Override the default model at any time:
 
 ```bash
 python -m src.main run "Task" -m nvidia/nemotron-3-super-120b-a12b:free
+```
+
+Or start chat with a one-off model override:
+
+```bash
+python -m src.main chat -m nvidia/nemotron-3-super-120b-a12b:free
 ```
 
 See all 29 free models:
